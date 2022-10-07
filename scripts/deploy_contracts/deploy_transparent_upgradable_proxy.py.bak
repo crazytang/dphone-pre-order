@@ -1,0 +1,36 @@
+import web3
+from brownie import TransparentUpgradeableProxy, PreOrder, ProxyAdmin
+from brownie.network import contract
+from brownie.network.contract import ProjectContract, ContractTx, Contract
+from hexbytes import HexBytes
+from web3._utils.contracts import encode_abi
+
+from helpers.local_accounts import get_admin_account, get_user1_account, get_user2_account
+from helpers.utils import encode_function_data
+
+
+def main(*args, **kwargs):
+
+    is_deploy = 'deploy' in args
+    account = get_admin_account()
+
+    pre_order = PreOrder[-1]
+    proxy_admin = ProxyAdmin[-1]
+
+    operators = [account.address, get_user1_account().address, get_user2_account().address]
+    call_data = encode_function_data(pre_order.initialize, operators)
+    # print('call_data', call_data)
+    if is_deploy:
+        transparent_upgradeable_proxy: ProjectContract = TransparentUpgradeableProxy.deploy(pre_order.address, proxy_admin.address, call_data, {"from": account})
+        print('transparent_upgradeable_proxy has been deployed txid', transparent_upgradeable_proxy.tx.txid)
+        assert account.address == transparent_upgradeable_proxy.tx.sender
+    else:
+        transparent_upgradeable_proxy = TransparentUpgradeableProxy[-1]
+        tx = proxy_admin.upgrade(transparent_upgradeable_proxy.address, pre_order.address, {"from": account})
+        print('transparent_upgradeable_proxy has been upgraded address', tx.txid)
+
+    proxy = Contract.from_abi("PreOrder", transparent_upgradeable_proxy.address, PreOrder.abi)
+    operators_in_proxy = proxy.getOperators()
+    print('operators_in_proxy', operators_in_proxy)
+
+    assert len(operators) == len(operators_in_proxy)
